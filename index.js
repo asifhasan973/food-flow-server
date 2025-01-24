@@ -4,7 +4,6 @@ const { ObjectId } = require('mongodb');
 require('dotenv').config();
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
-// Initialize app and middleware
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -13,7 +12,6 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const uri = process.env.MONGO_URI;
 
-// Persistent MongoDB client connection
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -24,23 +22,20 @@ const client = new MongoClient(uri, {
 
 async function connectToMongoDB() {
   try {
-    // Connect once at server startup
     await client.connect();
     console.log(
       'Pinged your deployment. You successfully connected to MongoDB!'
     );
   } catch (error) {
     console.error('Error connecting to MongoDB:', error);
-    process.exit(1); // Exit if the connection fails
+    process.exit(1);
   }
 }
 
-// Initialize MongoDB connection at server startup
 connectToMongoDB();
 
 const foodsCollection = client.db('food-flow').collection('foods');
 
-// Routes
 app.get('/', (req, res) => {
   res.send('Hello World!');
 });
@@ -53,7 +48,7 @@ app.get('/foods', async (req, res) => {
     console.error('Error fetching all food items:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
-}); // **Removed await client.connect() and client.close()**
+});
 
 app.get('/foods/:id', async (req, res) => {
   try {
@@ -70,14 +65,26 @@ app.get('/foods/:id', async (req, res) => {
     console.error('Error fetching food item:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
-}); // **Removed await client.connect() and client.close()**
+});
+
+app.post('/foods', async (req, res) => {
+  try {
+    const newFood = req.body;
+
+    const result = await foodsCollection.insertOne(newFood);
+    res.json(result.ops[0]);
+  } catch (error) {
+    console.error('Error creating food item:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 app.put('/foods/:id', async (req, res) => {
   try {
     const foodId = new ObjectId(req.params.id);
     const updatedFood = req.body;
 
-    delete updatedFood._id; // Prevent modification of the immutable _id field
+    delete updatedFood._id;
 
     const result = await foodsCollection.updateOne(
       { _id: foodId },
@@ -96,9 +103,8 @@ app.put('/foods/:id', async (req, res) => {
 });
 app.delete('/foods/:id', async (req, res) => {
   try {
-    const foodId = new ObjectId(req.params.id); // Convert id to ObjectId
+    const foodId = new ObjectId(req.params.id);
 
-    // Delete the food item by its ID
     const result = await foodsCollection.deleteOne({ _id: foodId });
 
     if (result.deletedCount === 0) {
@@ -112,27 +118,15 @@ app.delete('/foods/:id', async (req, res) => {
   }
 });
 
-app.post('/foods', async (req, res) => {
-  try {
-    const newFood = req.body;
-
-    const result = await foodsCollection.insertOne(newFood);
-    res.json(result.ops[0]);
-  } catch (error) {
-    console.error('Error creating food item:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-}); // **Removed await client.connect() and client.close()**
-
 app.get('/foods/email/:email', async (req, res) => {
   try {
     const email = req.params.email;
 
     const foods = await foodsCollection
       .find({
-        'donator.email': email, // Query nested donator.email
+        'donator.email': email,
       })
-      .toArray(); // Convert the result to an array
+      .toArray();
 
     if (foods.length === 0) {
       return res
@@ -145,7 +139,7 @@ app.get('/foods/email/:email', async (req, res) => {
     console.error('Error fetching food items by email:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
-}); // **Removed await client.connect() and client.close()**
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
