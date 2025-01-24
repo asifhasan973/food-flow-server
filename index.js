@@ -140,6 +140,28 @@ app.get('/foods/email/:email', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+app.get('/foods/requested/:email', async (req, res) => {
+  try {
+    const email = req.params.email;
+
+    const foods = await foodsCollection
+      .find({
+        requestedEmail: email,
+      })
+      .toArray();
+
+    if (foods.length === 0) {
+      return res
+        .status(404)
+        .json({ error: 'No food items found for this email' });
+    }
+
+    res.json(foods);
+  } catch (error) {
+    console.error('Error fetching food items by email:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
