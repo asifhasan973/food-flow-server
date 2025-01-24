@@ -13,9 +13,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const uri = process.env.MONGO_URI;
 
-// Connect to MongoDB
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+// Persistent MongoDB client connection
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -24,46 +22,41 @@ const client = new MongoClient(uri, {
   },
 });
 
-async function run() {
+async function connectToMongoDB() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
+    // Connect once at server startup
     await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db('admin').command({ ping: 1 });
     console.log(
       'Pinged your deployment. You successfully connected to MongoDB!'
     );
-  } finally {
-    // Ensures that the client will close when you finish/error
-    await client.close();
+  } catch (error) {
+    console.error('Error connecting to MongoDB:', error);
+    process.exit(1); // Exit if the connection fails
   }
 }
 
+// Initialize MongoDB connection at server startup
+connectToMongoDB();
+
 const foodsCollection = client.db('food-flow').collection('foods');
 
-run().catch(console.dir);
-
+// Routes
 app.get('/', (req, res) => {
   res.send('Hello World!');
 });
 
 app.get('/foods', async (req, res) => {
   try {
-    await client.connect();
-
     const foods = await foodsCollection.find({}).toArray();
-
     res.json(foods);
   } catch (error) {
-    console.error(error);
-  } finally {
-    await client.close();
+    console.error('Error fetching all food items:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
-});
+}); // **Removed await client.connect() and client.close()**
+
 app.get('/foods/:id', async (req, res) => {
   try {
-    await client.connect();
-
     const foodId = new ObjectId(req.params.id);
 
     const food = await foodsCollection.findOne({ _id: foodId });
@@ -76,27 +69,83 @@ app.get('/foods/:id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching food item:', error);
     res.status(500).json({ error: 'Internal Server Error' });
-  } finally {
-    await client.close();
+  }
+}); // **Removed await client.connect() and client.close()**
+
+app.put('/foods/:id', async (req, res) => {
+  try {
+    const foodId = new ObjectId(req.params.id);
+    const updatedFood = req.body;
+
+    delete updatedFood._id; // Prevent modification of the immutable _id field
+
+    const result = await foodsCollection.updateOne(
+      { _id: foodId },
+      { $set: updatedFood }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Food item not found' });
+    }
+
+    res.json({ message: 'Food item updated successfully' });
+  } catch (error) {
+    console.error('Error updating food item:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+app.delete('/foods/:id', async (req, res) => {
+  try {
+    const foodId = new ObjectId(req.params.id); // Convert id to ObjectId
+
+    // Delete the food item by its ID
+    const result = await foodsCollection.deleteOne({ _id: foodId });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Food item not found' });
+    }
+
+    res.json({ message: 'Food item deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting food item:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
 app.post('/foods', async (req, res) => {
   try {
-    await client.connect();
-
     const newFood = req.body;
 
     const result = await foodsCollection.insertOne(newFood);
-
     res.json(result.ops[0]);
   } catch (error) {
     console.error('Error creating food item:', error);
     res.status(500).json({ error: 'Internal Server Error' });
-  } finally {
-    await client.close();
   }
-});
+}); // **Removed await client.connect() and client.close()**
+
+app.get('/foods/email/:email', async (req, res) => {
+  try {
+    const email = req.params.email;
+
+    const foods = await foodsCollection
+      .find({
+        'donator.email': email, // Query nested donator.email
+      })
+      .toArray(); // Convert the result to an array
+
+    if (foods.length === 0) {
+      return res
+        .status(404)
+        .json({ error: 'No food items found for this email' });
+    }
+
+    res.json(foods);
+  } catch (error) {
+    console.error('Error fetching food items by email:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}); // **Removed await client.connect() and client.close()**
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
